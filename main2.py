@@ -6,6 +6,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
 from scipy.optimize import root, root_scalar
 import traceback
+import time
 
 
 class Tab2:
@@ -94,31 +95,35 @@ class Tab2:
         return self.data_mu2["function"](r)
 
     def X(self, gamma):
-        a_val = float(self.entries["a"].get())  # Получаем актуальное значение a
-        steps = 10000
-        t = np.linspace(a_val , gamma, steps + 1)
-        x_integrand = t / self.mu1(t)
+        a_val = float(self.entries["a"].get())
+        steps = 100000  # Уменьшите шаги, если это возможно
         h = (gamma - a_val) / steps
-        integral = h * (0.5 * (x_integrand[0] + x_integrand[-1]) + np.sum(x_integrand[1:-1]))
-        return integral
+        t = np.linspace(a_val, gamma, steps + 1)
+        integrand = t / self.mu1(t)
+        integrand[0] *= 0.5
+        integrand[-1] *= 0.5
+        return h * np.sum(integrand)
 
     def Y(self, gamma):
         b_val = float(self.entries["b"].get())
-        steps = 10000
-        t = np.linspace(gamma, b_val, steps + 1)
-        integrand = (self.mu1(t) + self.mu2(t)) / t ** 3
+        steps = 100000
         h = (b_val - gamma) / steps
-        integral = h * (0.5 * (integrand[0] + integrand[-1]) + np.sum(integrand[1:-1]))
-        return integral
+        t = np.linspace(gamma, b_val, steps + 1)
+        mu_val = self.mu1(t) + self.mu2(t)
+        integrand = mu_val / (t ** 3)
+        integrand[0] *= 0.5
+        integrand[-1] *= 0.5
+        return h * np.sum(integrand)
 
     def Z(self, gamma):
         b_val = float(self.entries["b"].get())
-        steps = 10000
+        steps = 100000
+        h = (b_val - gamma) / steps
         t = np.linspace(gamma, b_val, steps + 1)
         integrand = self.mu2(t) / t
-        h = (b_val - gamma) / steps
-        integral = h * (0.5 * (integrand[0] + integrand[-1]) + np.sum(integrand[1:-1]))
-        return integral
+        integrand[0] *= 0.5
+        integrand[-1] *= 0.5
+        return h * np.sum(integrand)
 
 
     def W(self, gamma):
@@ -178,18 +183,16 @@ class Tab2:
     def ef(self, gamma):
         X_g = self.X(gamma)
         return 2/(gamma**2) * X_g - 1/(self.mu1(gamma))
+
     def find_gamma(self):
-        try:
-            a = float(self.entries['a'].get())
-            b_val = float(self.entries['b'].get())
-            # Используем метод Брента для быстрого нахождения корня
-            result = root_scalar(self.Omega, bracket=[a, b_val], method='brentq', xtol=1e-6)
-            if not result.converged:
-                raise RuntimeError("Решение не найдено.")
-            self.gamma = result.root
-            return self.gamma
-        except ValueError as e:
-            raise RuntimeError(f"Ошибка: {str(e)}") from e
+        a_val = float(self.entries["a"].get())
+        b_val = float(self.entries["b"].get())
+        res = root_scalar(self.Omega, bracket=[a_val, b_val], method='bisect', xtol=1e-6)
+        if not res.converged:
+            raise RuntimeError("Не сходится")
+        self.gamma = res.root
+        print("gamma = ", self.gamma)
+        return self.gamma
 
     def find_integration_constants(self):
         a = float(self.entries["a"].get())
@@ -236,65 +239,90 @@ class Tab2:
         return A1, B1, C1
 
     def calculate_displacements(self):
+        start_timer = time.time()
         self.find_gamma()
         A1, B1, C1 = self.find_integration_constants()
-        epsilon0 = float(self.entries["epsilon0"].get())
         a_rad = float(self.entries["a"].get())
         b_rad = float(self.entries["b"].get())
         r = np.linspace(a_rad, b_rad, 100)
         v = float(self.entries["nu"].get())
+        epsilon0 = float(self.entries["epsilon0"].get())
         qb = float(self.entries["qb"].get())
 
-        # Векторизованные вычисления
-        mask_inner = r <= self.gamma
-        r_inner = r[mask_inner]
-        r_outer = r[~mask_inner]
+        # Векторные вычисления для всех r
+        inner_mask = (r >= a_rad) & (r <= self.gamma)
+        outer_mask = (r >= self.gamma) & (r <= b_rad)
 
-        # Перемещения
+        # Предварительные вычисления для всех r
+        X_r = np.vectorize(self.X)(r)  # Если X не векторизован
+        Y_r = np.vectorize(self.Y)(r)
+        Z_r = np.vectorize(self.Z)(r)
+        mu1_r = self.mu1(r)
+        mu2_r = self.mu2(r)
+
+        # Вычисление U11 и U21 векторно
+        U11 = (A1 * X_r + B1) / r
+        U21 = C1 / r - 0.5 * epsilon0 * r
+
+        # Сбор u
         u = np.zeros_like(r)
-        u[mask_inner] = (A1 * np.array([self.X(ri) for ri in r_inner]) + B1) / r_inner
-        u[~mask_inner] = C1 / r_outer - 0.5 * epsilon0 * r_outer
+        u[inner_mask] = U11[inner_mask]
+        u[outer_mask] = U21[outer_mask]
 
-        # Деформации
-        theta = np.zeros_like(r)
-        theta[mask_inner] = A1 / self.mu1(r_inner)
+        # Вычисление theta
+        theta = A1 / mu1_r
 
-        # Напряжения
+        # Вычисление sigma
         sigma = np.zeros_like(r)
-        sigma[mask_inner] = 2 * self.mu1(r_inner) * (
-            A1 * ((1 - v) / (1 - 2 * v) / self.mu1(r_inner) - np.array([self.X(ri) for ri in r_inner]) / r_inner**2) -
-            B1 / r_inner**2
+        # Слои: внутренний
+        sigma[inner_mask] = 2 * mu1_r[inner_mask] * (
+                A1 * (
+                (1 - v) / (1 - 2 * v) * 1 / mu1_r[inner_mask]
+                - X_r[inner_mask] / (r[inner_mask] ** 2)
+        )
+                - B1 / (r[inner_mask] ** 2)
+        )
+        # Слои: внешний
+        eph1 = 2 * (
+                A1 * (2 * self.X(self.gamma) / (self.gamma ** 2)
+                      - 1 / self.mu1(self.gamma))
+                + 2 * B1 / (self.gamma ** 2)
+        )
+        sigma[outer_mask] = (
+                eph1 * Z_r[outer_mask]
+                - 4 * C1 * Y_r[outer_mask]
+                - qb
         )
 
-        X_g = self.X(self.gamma)
-        term = 2 * (A1 * (2 * X_g / self.gamma ** 2 - 1 / self.mu1(self.gamma)) + 2 * B1 / self.gamma ** 2)
-        sigma[~mask_inner] = term * self.Z(r_outer) - 4 * C1 * self.Y(r_outer) - float(self.entries["qb"].get())
-
+        # Вычисление sigma_theta
         sigma_theta = np.zeros_like(r)
-        if len(r_inner) > 0:
-            mu1_inner = self.mu1(r_inner)
-            X_inner = np.array([self.X(ri) for ri in r_inner])
-            sigma_theta[mask_inner] = 2 * mu1_inner * (
-                A1 * (v/1-2*v)/mu1_inner +
-                (X_inner + B1)/(r_inner**2)
-            )
+        # Внутренний слой
+        sigma_theta[inner_mask] = 2 * mu1_r[inner_mask] * (
+                A1 * (
+                v / (1 - 2 * v) * 1 / mu1_r[inner_mask]
+                + X_r[inner_mask] / (r[inner_mask] ** 2)
+        )
+                + B1 / (r[inner_mask] ** 2)
+        )
+        # Внешний слой
+        mu_total = mu1_r + mu2_r
+        ef_g = 2 / (self.gamma ** 2) * self.X(self.gamma) - 1 / self.mu1(self.gamma)
+        sigma_theta[outer_mask] = (
+                4 * C1 * (mu_total[outer_mask] / (r[outer_mask] ** 2) - Y_r[outer_mask])
+                + 2 * (A1 * ef_g + 2 * B1 / (self.gamma ** 2)) * (Z_r[outer_mask] - self.mu2(r[outer_mask]))
+                - qb
+        )
 
-        if len(r_outer) > 0:
-            mu_outer = self.mu1(r_outer) + self.mu2(r_outer)
-            Y_outer = np.array([self.Y(ro) for ro in r_outer])
-            Z_outer = np.array([self.Z(ro) for ro in r_outer])
-            mu0_outer = self.mu2(r_outer)
-            ef_g = self.ef(self.gamma)
+        # Диагностические выводы
+        print(f"U(a) = {U11[r == a_rad][0]}")
+        print(f"U(b) = {U21[r == b_rad][0]}")
+        print(f"theta(a) = {theta[r == a_rad][0]}")
+        print(f"sigma(a) = {sigma[inner_mask][0]}")
+        print(f"sigma(b) = {sigma[outer_mask][-1]}")
 
-            sigma_theta[~mask_inner] = (
-                4 * C1 * (mu_outer/r_outer**2 - Y_outer) +
-                2 * (A1 * ef_g + 2*B1/self.gamma**2) + (Z_outer - mu0_outer) -
-                qb
-            )
-        # Для внешней части вычисляем один раз общие параметры
-
+        finish_timer = time.time() - start_timer
+        print(f"время поиска перемещений, деформаций и  напряжений: {finish_timer} сек")
         return r, u, theta, sigma, sigma_theta
-        # return r, u, sigma_r, sigma_theta
 
     def update_results(self):
         try:
