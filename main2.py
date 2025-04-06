@@ -94,77 +94,31 @@ class Tab2:
         return self.data_mu2["function"](r)
 
     def X(self, gamma):
-        def x_integrand(t):
-            return t / self.mu1(t)
-        """Вычисление интеграла X методом трапеций"""
-        # print("X begin")
         a_val = float(self.entries["a"].get())  # Получаем актуальное значение a
-        steps = 100000
+        steps = 10000
+        t = np.linspace(a_val , gamma, steps + 1)
+        x_integrand = t / self.mu1(t)
         h = (gamma - a_val) / steps
-
-        sum_result = 0.0
-        for i in range(steps + 1):
-            t = a_val + i * h
-            if i == 0 or i == steps:
-                term = x_integrand(t)
-            else:
-                term = 2 * x_integrand(t)
-            sum_result += term
-
-        # print("X ok")
-        return (h / 2) * sum_result
+        integral = h * (0.5 * (x_integrand[0] + x_integrand[-1]) + np.sum(x_integrand[1:-1]))
+        return integral
 
     def Y(self, gamma):
-        def y_integrand(t):
-            mu_val = self.mu1(t) + self.mu2(t)
-            # print(f"mu_{t} = {mu_val}")
-            # print(f"mu1_{t} = {self.mu1(t)}, mu2_{t} = {self.mu2(t)}")
-            # if(math.isnan(mu_val)):
-            #     print(f"mu is nan! mu = {mu_val}, t = {t}")
-            # if (math.isnan(self.mu1(t))):
-            #     print(f"mu1 is nan! mu1 = {self.mu1(t)}, t = {t}")
-            # if (math.isnan(self.mu2(t))):
-            #     print(f"mu is nan! mu2 = {self.mu2(t)}, t = {t}")
-            return mu_val / (t**3)
-
-        # print("Y begin")
         b_val = float(self.entries["b"].get())
-        steps = 100000
+        steps = 10000
+        t = np.linspace(gamma, b_val, steps + 1)
+        integrand = (self.mu1(t) + self.mu2(t)) / t ** 3
         h = (b_val - gamma) / steps
-
-        sum_result = 0.0
-        for i in range(steps + 1):
-            t = gamma + i * h
-            if i == 0 or i == steps:
-                term = y_integrand(t)
-            else:
-                term = 2 * y_integrand(t)
-            sum_result += term
-
-        # print("Y ok")
-        return (h / 2) * sum_result
+        integral = h * (0.5 * (integrand[0] + integrand[-1]) + np.sum(integrand[1:-1]))
+        return integral
 
     def Z(self, gamma):
-        def z_integrand(t):
-            mu_val = self.mu2(t)
-            return mu_val / t
-
-        # print("Z begin")
         b_val = float(self.entries["b"].get())
-        steps = 100000
+        steps = 10000
+        t = np.linspace(gamma, b_val, steps + 1)
+        integrand = self.mu2(t) / t
         h = (b_val - gamma) / steps
-
-        sum_result = 0.0
-        for i in range(steps + 1):
-            t = gamma + i * h
-            if i == 0 or i == steps:
-                term = z_integrand(t)
-            else:
-                term = 2 * z_integrand(t)
-            sum_result += term
-
-        # print("Z ok")
-        return (h / 2) * sum_result
+        integral = h * (0.5 * (integrand[0] + integrand[-1]) + np.sum(integrand[1:-1]))
+        return integral
 
 
     def W(self, gamma):
@@ -225,68 +179,17 @@ class Tab2:
         X_g = self.X(gamma)
         return 2/(gamma**2) * X_g - 1/(self.mu1(gamma))
     def find_gamma(self):
-        def equation(gamma):
-            return self.Omega(gamma)
-
         try:
             a = float(self.entries['a'].get())
-            b = float(self.entries['b'].get())
-            nu = float(self.entries["nu"].get())
-            self.gamma = float(self.entry_boundary.get())
-            # print("b1")# Явное обновление границы
-
-            # Проверка, что граница слоев внутри [a, b]
-            if not (a < self.gamma < b):
-                raise ValueError("Граница слоя должна быть между a и b!")
-
-            # Проверка знаков функции на концах интервала
-            # print(f"a = {a}")
-            # print(f"b = {b}")
-            # print(f"gamma = {self.gamma}")
-            fa = self.Omega(a)
-            fb = self.Omega(b)
-            # print(f"f(a)={fa}, f(b)={fb}")
-            # print(f"X(a) = {self.X(a)}, X(b) = {self.X(b)}")
-            # print(f"Y(a) = {self.Y(a)}, Y(b) = {self.Y(b)}")
-            # print(f"Z(a) = {self.Z(a)}, Z(b) = {self.Z(b)}")
-            # print(f"W(a) = {self.W(a)}, W(b) = {self.W(b)}")
-            # print(f"O1(a) = {self.Omega1(a)}, O1(b) = {self.Omega1(b)}")
-            # print(f"O2(a) = {self.Omega2(a)}, O2(b) = {self.Omega2(b)}")
-            # print(f"drob = {(1 - nu)/(1 - 2 * nu)}")
-            # print("b2")# Отладочный вывод
-
-            if np.sign(fa) == np.sign(fb):
-                raise ValueError("Функция не меняет знак на интервале!")
-
-            a_eq, b_eq = a, b
-            xtol = 1e-6
-            maxiter = 100000
-            for iteration in range(maxiter):
-                c = (a_eq + b_eq) / 2
-                fc = equation(c)
-                print(f"eq = {equation(c)}")
-                print(f"omega(c = {self.Omega(c)}, c = {c}")
-                if abs(b_eq - a_eq) < xtol:
-                    self.gamma = c
-                    # print(f"Сошлось за {iteration+1} итераций")
-                    print(f"gamma = {c}")
-                    return self.gamma
-                if np.sign(fa) != np.sign(fc):
-                    b_eq = c
-                else:
-                    a_eq = c
-                    fa = fc
-
-            raise RuntimeError(f"Не сходится за {maxiter} итераций. Текущий корень: {c}")
-        except ValueError as e:
-            raise RuntimeError(f"Ошибка поиска корня: {str(e)}") from e
-        except Exception as e:
-            raise RuntimeError(f"Неожиданная ошибка: {str(e)}") from e
-            print(f"Найденный gamma: {self.gamma}")  # Отладочный вывод
+            b_val = float(self.entries['b'].get())
+            # Используем метод Брента для быстрого нахождения корня
+            result = root_scalar(self.Omega, bracket=[a, b_val], method='brentq', xtol=1e-6)
+            if not result.converged:
+                raise RuntimeError("Решение не найдено.")
+            self.gamma = result.root
             return self.gamma
-
         except ValueError as e:
-            raise RuntimeError(f"Ошибка поиска корня: {str(e)}") from e
+            raise RuntimeError(f"Ошибка: {str(e)}") from e
 
     def find_integration_constants(self):
         a = float(self.entries["a"].get())
@@ -333,117 +236,63 @@ class Tab2:
         return A1, B1, C1
 
     def calculate_displacements(self):
-        """Расчет перемещений и напряжений"""
         self.find_gamma()
         A1, B1, C1 = self.find_integration_constants()
         epsilon0 = float(self.entries["epsilon0"].get())
-        # print(f"Найденное значение γ: {self.gamma}")
-        #
-        # print(f"Константы интегрирования: A1 = {A1}, B1 = {B1}, C1 = {C1}")
-
-        # Генерация точек по радиусу
         a_rad = float(self.entries["a"].get())
         b_rad = float(self.entries["b"].get())
         r = np.linspace(a_rad, b_rad, 100)
+        v = float(self.entries["nu"].get())
         qb = float(self.entries["qb"].get())
 
-        # Расчет перемещений
+        # Векторизованные вычисления
+        mask_inner = r <= self.gamma
+        r_inner = r[mask_inner]
+        r_outer = r[~mask_inner]
+
+        # Перемещения
         u = np.zeros_like(r)
+        u[mask_inner] = (A1 * np.array([self.X(ri) for ri in r_inner]) + B1) / r_inner
+        u[~mask_inner] = C1 / r_outer - 0.5 * epsilon0 * r_outer
+
+        # Деформации
         theta = np.zeros_like(r)
+        theta[mask_inner] = A1 / self.mu1(r_inner)
+
+        # Напряжения
         sigma = np.zeros_like(r)
+        sigma[mask_inner] = 2 * self.mu1(r_inner) * (
+            A1 * ((1 - v) / (1 - 2 * v) / self.mu1(r_inner) - np.array([self.X(ri) for ri in r_inner]) / r_inner**2) -
+            B1 / r_inner**2
+        )
+
+        X_g = self.X(self.gamma)
+        term = 2 * (A1 * (2 * X_g / self.gamma ** 2 - 1 / self.mu1(self.gamma)) + 2 * B1 / self.gamma ** 2)
+        sigma[~mask_inner] = term * self.Z(r_outer) - 4 * C1 * self.Y(r_outer) - float(self.entries["qb"].get())
+
         sigma_theta = np.zeros_like(r)
-
-        v = float(self.entries["nu"].get())
-
-        def U11(r):
-            return (A1 * self.X(r) + B1)/r
-
-        def U21(r):
-            return C1/r - 0.5 * epsilon0 * r
-        # print("U starts")
-        for i, r_val in enumerate(r):
-            print(f"u find, iteration {i}")
-            # Определение μ в зависимости от слоя
-            if (r_val <= self.gamma) and (r_val >= a_rad):
-                u[i] = U11(r_val)
-            elif (r_val >= self.gamma) and (r_val <= b_rad):
-                u[i] = U21(r_val)
-        # print("U finish")
-
-
-        def theta11(r):
-            return A1 / self.mu1(r)
-
-        # Определение объемных деформаций
-        # print("theta starts")
-        for i, r_val in enumerate(r):
-            print(f"theta find, iteration {i}")
-            if (r_val >= a_rad) and (r_val <= b_rad):
-                theta[i] = theta11(r_val)
-            # if (r >= self.gamma) and (r <= b_rad):
-            #     theta[i] = epsilon0 * (-1)
-        # print("theta finish")
-
-        def sigma11(r):
-            X_val = self.X(r)
-            mu1_val = self.mu1(r)
-            result = 2*mu1_val*(A1 *( ((1-v)/(1-2 * v)) * 1 / mu1_val - X_val / r**2) - B1 / r**2)
-            return result
-
-        def sigma21(r):
-            eph1 = 2 * (A1 * ( (2 / (self.gamma)**2) * self.X(self.gamma) - 1 / self.mu1(self.gamma)) + (2 * B1)/(self.gamma)**2)
-            result = eph1 * self.Z(r) - 4 * C1 * self.Y(r) - qb
-            return result
-
-        print("sigma starts")
-        for i, r_val in enumerate(r):
-            print("sigma find, i = ", i)
-            if(r_val >= a_rad) and (r_val <= self.gamma):
-                sigma[i] = sigma11(r_val)
-            elif(r_val >= self.gamma) and (r_val <= b_rad):
-                sigma[i] = sigma21(r_val)
-        print("sigma finish")
-
-        def sigma_theta11(r):
-            mu1_r = self.mu1(r)
-            X_r = self.X(r)
-            sigma_theta11 = 2 * mu1_r * (
-                    A1 * (v / (1 - 2 * v) * (1 / mu1_r) + (1 / (r ** 2)) * X_r)
-                    + B1 / (r ** 2)
+        if len(r_inner) > 0:
+            mu1_inner = self.mu1(r_inner)
+            X_inner = np.array([self.X(ri) for ri in r_inner])
+            sigma_theta[mask_inner] = 2 * mu1_inner * (
+                A1 * (v/1-2*v)/mu1_inner +
+                (X_inner + B1)/(r_inner**2)
             )
-            return sigma_theta11
 
-        def sigma_theta21(r):
-            mu = self.mu1(r) + self.mu2(r)
+        if len(r_outer) > 0:
+            mu_outer = self.mu1(r_outer) + self.mu2(r_outer)
+            Y_outer = np.array([self.Y(ro) for ro in r_outer])
+            Z_outer = np.array([self.Z(ro) for ro in r_outer])
+            mu0_outer = self.mu2(r_outer)
             ef_g = self.ef(self.gamma)
-            Z_r = self.Z(r)
-            Y_r = self.Y(r)
-            mu0_r = self.mu2(r)
-            sigma_theta21 = (
-                    4 * C1 * (mu / r ** 2 - Y_r)
-                    + 2 * (A1 * ef_g + 2 * B1 / self.gamma ** 2) * (Z_r - mu0_r)
-                    - qb
+
+            sigma_theta[~mask_inner] = (
+                4 * C1 * (mu_outer/r_outer**2 - Y_outer) +
+                2 * (A1 * ef_g + 2*B1/self.gamma**2) + (Z_outer - mu0_outer) -
+                qb
             )
-            return sigma_theta21
+        # Для внешней части вычисляем один раз общие параметры
 
-        print("sigma theta starts")
-        for i, r_val in enumerate(r):
-            print("sigma theta finds, i = ", i)
-            if(r_val >= a_rad) and (r_val <= self.gamma):
-                sigma_theta[i] = sigma_theta11(r_val)
-            elif (r_val >= self.gamma) and (r_val <= b_rad):
-                sigma_theta[i] = sigma_theta21(r_val)
-        print("sigma theha finish")
-
-        print("U(a) = ", U11(1))
-        print("U(b) = ", U21(3))
-        print("theta(a) = ", theta11(1))
-        print("theta(g) = ", theta11(self.gamma))
-        print("theta(b) = ", theta11(3))
-        print("sigma(a) = ", sigma11(1))
-        print("sigma11(g) = ", sigma11(self.gamma))
-        print("sigma21(g) = ", sigma21(self.gamma))
-        print("sigma(b) = ", sigma21(3))
         return r, u, theta, sigma, sigma_theta
         # return r, u, sigma_r, sigma_theta
 
