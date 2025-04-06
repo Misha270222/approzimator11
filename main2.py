@@ -22,6 +22,68 @@ class Tab2:
         self.gamma = (self.b - self.a)/2
         self.create_widgets()
 
+        self.zoom_active = False
+        self.pan_active = False
+        self.prev_x = None
+        self.prev_y = None
+        self.cuurent_ax = None
+
+        self.canvas.mpl_connect('scroll_event', self.on_mousewheel)
+        self.canvas.mpl_connect('button_press_event', self.on_press)
+        self.canvas.mpl_connect('button_release_event', self.on_release)
+        self.canvas.mpl_connect('motion_notify_event', self.on_motion)
+
+    def on_mousewheel(self, event):
+        ax = event.inaxes
+        if ax is None:
+            return
+        base_scale = 1.2
+        if event.button == 'up':
+            scale_factor = 1 / base_scale
+        else:
+            scale_factor = base_scale
+
+        current_xlim = ax.get_xlim()
+        current_ylim = ax.get_ylim()
+        new_width = (current_xlim[1] - current_xlim[0]) * scale_factor
+        new_height = (current_ylim[1] - current_ylim[0]) * scale_factor
+        x_center = event.xdata
+        y_center = event.ydata
+
+        ax.set_xlim([x_center - new_width / 2, x_center + new_width / 2])
+        ax.set_ylim([y_center - new_height / 2, y_center + new_height / 2])
+        self.canvas.draw()
+
+    def on_press(self, event):
+        if event.button != 1:
+            return
+        ax = event.inaxes
+        if ax is None:
+            return
+        self.pan_active = True
+        self.prev_x = event.xdata
+        self.prev_y = event.ydata
+        self.current_ax = ax
+
+    def on_release(self, event):
+        self.pan_active = False
+        self.current_ax = None
+
+    def on_motion(self, event):
+        if not self.pan_active or self.current_ax is None:
+            return
+        if event.xdata is None or event.ydata is None:
+            return
+        dx = (event.xdata - self.prev_x) * 0.5
+        dy = (event.ydata - self.prev_y) * 0.5
+        ax = self.current_ax
+        xlim = ax.get_xlim()
+        ylim = ax.get_ylim()
+        ax.set_xlim(xlim[0] - dx, xlim[1] - dx)
+        ax.set_ylim(ylim[0] - dy, ylim[1] - dy)
+        self.prev_x = event.xdata
+        self.prev_y = event.ydata
+        self.canvas.draw()
     def create_widgets(self):
         # Поля ввода
         fields = [

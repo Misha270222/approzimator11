@@ -5,6 +5,16 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
 from scipy.optimize import curve_fit
 from main2 import Tab2
+from matplotlib.backends.backend_tkagg import (
+    FigureCanvasTkAgg, NavigationToolbar2Tk
+)
+from style import configure_styles
+
+global zoom_active, pan_active, prev_x, prev_y
+zoom_active = False
+pan_active = False
+prev_x = None
+prev_y = None
 
 entry_a = None
 entry_b = None
@@ -27,6 +37,60 @@ all_lines = []
 
 # Переменная для управления отображением точек
 show_points = True
+
+def on_mousewheel(event):
+    # Зуммирование по прокрутке мыши
+    base_scale = 1.2  # Коэффициент масштабирования
+    if event.button == 'up':
+        scale_factor = 1 / base_scale
+    else:
+        scale_factor = base_scale
+
+    # Получаем текущие пределы осей
+    current_xlim = ax.get_xlim()
+    current_ylim = ax.get_ylim()
+
+    # Вычисляем новую ширину и высоту осей
+    new_width = (current_xlim[1] - current_xlim[0]) * scale_factor
+    new_height = (current_ylim[1] - current_ylim[0]) * scale_factor
+
+    # Центрируем масштабирование относительно позиции курсора
+    x_center = event.xdata
+    y_center = event.ydata
+    if x_center is not None and y_center is not None:
+        ax.set_xlim([x_center - new_width/2, x_center + new_width/2])
+        ax.set_ylim([y_center - new_height/2, y_center + new_height/2])
+        canvas.draw()
+
+
+def on_press(event):
+    # Начало панорамирования при нажатии левой кнопки мыши
+    global pan_active, prev_x, prev_y
+    if event.button == 1:  # Левая кнопка
+        pan_active = True
+        prev_x = event.xdata
+        prev_y = event.ydata
+
+def on_release(event):
+    # Окончание панорамирования
+    global pan_active
+    pan_active = False
+
+SMOOTHING_FACTOR = 0.5  # Значение от 0 до 1 (0.5 — усреднение на 50%)
+def on_motion(event):
+    global pan_active, prev_x, prev_y
+    if pan_active and prev_x is not None and prev_y is not None:
+        if event.xdata is None or event.ydata is None:
+            return
+        dx = (event.xdata - prev_x) * SMOOTHING_FACTOR
+        dy = (event.ydata - prev_y) * SMOOTHING_FACTOR
+        current_xlim = ax.get_xlim()
+        current_ylim = ax.get_ylim()
+        ax.set_xlim(current_xlim[0] - dx, current_xlim[1] - dx)
+        ax.set_ylim(current_ylim[0] - dy, current_ylim[1] - dy)
+        prev_x = event.xdata
+        prev_y = event.ydata
+        canvas.draw()
 
 def save_data():
     data = {
@@ -359,6 +423,16 @@ table_frame.grid(row=len(fields_tab1) + 6, column=0, columnspan=2, pady=10)
 fig, ax = plt.subplots()
 canvas = FigureCanvasTkAgg(fig, master=tab1)
 canvas.get_tk_widget().grid(row=0, column=2, rowspan=10, padx=10, pady=10, sticky=tk.NSEW)
+
+# После создания canvas:
+canvas.mpl_connect("scroll_event", on_mousewheel)
+canvas.mpl_connect("button_press_event", on_press)
+canvas.mpl_connect("button_release_event", on_release)
+canvas.mpl_connect("motion_notify_event", on_motion)
+# toolbar_frame = tk.Frame(tab1)
+# toolbar_frame.grid(row=9, column=2, padx=10, pady=2, sticky=tk.NSEW)
+# toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
+# toolbar.update()
 
 button_update = tk.Button(tab1, text="Обновить график", command=lambda: [save_current_mu_data(), update_plot(auto=False)])
 button_update.grid(row=len(fields_tab1) + 7, column=0, columnspan=2, pady=10)
